@@ -9,6 +9,7 @@
   Script para transferir eventos del Sucuri Web Application Firewall (WAF) hacia Azure Data Tables, en formato JSON.
   </p>
 </p>
+
 ---
 
 #### Requerimientos:
