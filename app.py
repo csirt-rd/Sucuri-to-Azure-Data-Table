@@ -34,7 +34,7 @@ def sucuri_to_azure_table(domain, key, secret, date):
             "limit": 1000
         }
     ).json()
-    if len(body) > 2:
+    if len(body) > 2 and len(body) > 6:
         for o in body:
             ROW_KEY = '-'.join([
                 ''.join(random.choices(CHARS, k=8)),
