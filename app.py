@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 from datetime import datetime, timedelta
-from os import getcwd, makedirs
 import random, string
+import threading
 import requests
 from azure.data.tables import TableClient
 
-# Azure Data Tables
+# Azure Data Tables Info
 AZURE_ACC_KEY = ""
 AZURE_ENDPOINT_SUFFIX = "core.windows.net"
 AZURE_ACC_NAME = ""
@@ -21,86 +21,58 @@ SUCURI_SITES = []
 
 CHARS = 'abcdef' + string.digits
 
-LOG_FILE = '-'.join([
-    '/'.join([getcwd(), 'logs', 'log']),
-    datetime.now().strftime("%Y%m%d")
-]) + '.txt'
-yesterday = datetime.now() - timedelta(1)
-
-# Azure Data Tables sh!t
-def sucuri_to_azure_table():
-    try:   
-        makedirs('/'.join([getcwd(), 'logs']))
-    except FileExistsError:
-        pass
-    for i in SUCURI_SITES:
-        if i["enabled"]:   
-            body = requests.post(
-                SUCURI_API_URL,
-                data={
-                    "k": i["key"], 
-                    "s": i["secret"],  
-                    "a": "audit_trails",   
-                    "date": yesterday.strftime("%Y-%m-%d"),   
-                    "format": "json"
-                }
-            ).json() 
-            if len(body) > 2:
-                with open(LOG_FILE, 'a', encoding='utf-8') as l:
-                    l.write(
-                        ' '.join([
-                            datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S:%f")[:-3],
-                            '+00:00',
-                            '[INF]',
-                            'Getting 1000 logs from',
-                            i["domain"],
-                            'at',
-                            datetime.now().strftime("%Y-%m-%d"),
-                            '\n'
-                        ])
-                    )
-                l.close()  
-                for x in body:
-                    ROW_KEY = '-'.join([
-                        ''.join(random.choices(CHARS, k=8)),
-                        ''.join(random.choices(CHARS, k=4)),
-                        ''.join(random.choices(CHARS, k=4)),
-                        ''.join(random.choices(CHARS, k=4)),
-                        ''.join(random.choices(CHARS, k=12))
-                    ])
-                    ENTITY_TEMPLATE = {
-                        "PartitionKey": i["domain"],
-                        "RowKey": ROW_KEY,
-                    }
-                    x["request_date"] = yesterday.strftime("%d-%b-%Y")
-                    x["request_time"] = datetime.now().strftime("%H:%M:%S")
-                    try:
-                        del x['geo_location']
-                    except KeyError:
-                        ENTITY = ENTITY_TEMPLATE | x
-                        with TableClient.from_connection_string(AZURE_CONN_STR, AZURE_TABLE_NAME) as table_client:
-                            resp = table_client.create_entity(entity=ENTITY)
-                            print(resp)
-                        continue
-                    except TypeError:
-                        pass
-                    else:
-                        ENTITY = ENTITY_TEMPLATE | x
-                        with TableClient.from_connection_string(AZURE_CONN_STR, AZURE_TABLE_NAME) as table_client:
-                            resp = table_client.create_entity(entity=ENTITY)
-                            print(resp)
-                with open(LOG_FILE, 'a', encoding='utf-8') as l:
-                    l.write(
-                        ' '.join([
-                            datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S:%f")[:-3],
-                            '+00:00',
-                            '[INF]',
-                            'Sending to',
-                            'Sucuri Azure Table',
-                            '\n'
-                        ])
-                    )
-                l.close()  
+# Azure Data Tables
+def sucuri_to_azure_table(domain, key, secret, date):
+    body = requests.post(
+        SUCURI_API_URL,
+        data={
+            "k": key,
+            "s": secret,
+            "a": "audit_trails",
+            "date": date.strftime("%Y-%m-%d"),
+            "format": "json",
+            "limit": 1000
+        }
+    ).json()
+    if len(body) > 2:
+        for o in body:
+            ROW_KEY = '-'.join([
+                ''.join(random.choices(CHARS, k=8)),
+                ''.join(random.choices(CHARS, k=4)),
+                ''.join(random.choices(CHARS, k=4)),
+                ''.join(random.choices(CHARS, k=4)),
+                ''.join(random.choices(CHARS, k=12))
+            ])
+            ENTITY_TEMPLATE = {
+                "PartitionKey": domain,
+                "RowKey": ROW_KEY,
+            }
+            try:
+                o["request_date"] = date.strftime("%d-%b-%Y")
+                o["request_time"] = datetime.now().strftime("%H:%M:%S")
+            except:
+                pass
+            try:
+                del o['geo_location']
+            except KeyError:
+                ENTITY = ENTITY_TEMPLATE | o
+                with TableClient.from_connection_string(AZURE_CONN_STR, AZURE_TABLE_NAME) as table_client:
+                    resp = table_client.create_entity(entity=ENTITY)
+                continue
+            except TypeError:
+                pass
+            else:
+                ENTITY = ENTITY_TEMPLATE | o
+                with TableClient.from_connection_string(AZURE_CONN_STR, AZURE_TABLE_NAME) as table_client:
+                    resp = table_client.create_entity(entity=ENTITY)
 
 if __name__ == "__main__":
-    sucuri_to_azure_table()
+    yesterday = datetime.now() - timedelta(1)
+    threads = list()
+    for i in SUCURI_SITES:
+        if i["enabled"]:
+            x = threading.Thread(target=sucuri_to_azure_table, args=(i["domain"],i["key"],i["secret"],yesterday), daemon=True)
+            threads.append(x)
+            x.start()
+    for index, thread in enumerate(threads):
+        thread.join()
