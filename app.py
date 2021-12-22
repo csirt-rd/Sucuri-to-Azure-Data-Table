@@ -4,6 +4,7 @@ import random, string
 import threading
 import requests
 from azure.data.tables import TableClient
+from azure.core.exceptions import ServiceRequestError
 
 # Azure Data Tables Info
 AZURE_ACC_KEY = ""
@@ -57,14 +58,20 @@ def sucuri_to_azure_table(domain, key, secret, date):
             except KeyError:
                 ENTITY = ENTITY_TEMPLATE | o
                 with TableClient.from_connection_string(AZURE_CONN_STR, AZURE_TABLE_NAME) as table_client:
-                    resp = table_client.create_entity(entity=ENTITY)
+                    try:
+                        resp = table_client.create_entity(entity=ENTITY)
+                    except ServiceRequestError:
+                        pass
                 continue
             except TypeError:
                 pass
             else:
                 ENTITY = ENTITY_TEMPLATE | o
                 with TableClient.from_connection_string(AZURE_CONN_STR, AZURE_TABLE_NAME) as table_client:
-                    resp = table_client.create_entity(entity=ENTITY)
+                    try:
+                        resp = table_client.create_entity(entity=ENTITY)
+                    except ServiceRequestError:
+                        pass
 
 if __name__ == "__main__":
     yesterday = datetime.now() - timedelta(1)
